@@ -1,247 +1,90 @@
-Next file: **`README.md`**.
+Yes. Your current README is **much more detailed than necessary** for a 3-hour take-home assignment. An interviewer mainly needs to understand:
 
-This will document exactly how our implementation works, including setup, sync behavior, conflict policy, API limits, messy data handling, assumptions, and future work—the items the assignment explicitly asks the README to cover. 
+1. What the project does
+2. How to run it
+3. How sync works
+4. Conflict policy
+5. Workflow rules
+6. Grader commands
+7. Key assumptions
 
-Create:
-
-```text
-Enview-Assignment-Prathamesh/README.md
-```
-
-Put this:
+I would replace your current README with this **minimal, interview-friendly version**:
 
 ````markdown
 # FieldServe Ticket Board
 
-A two-way synchronization tool between the FieldServe helpdesk API and a real Excel spreadsheet.
+Two-way synchronization between the FieldServe helpdesk API and a real Excel spreadsheet.
 
-The goal is to provide an operational spreadsheet view that answers:
+The spreadsheet answers:
 
 - What is this ticket waiting on?
 - Whose move is it?
 
-The spreadsheet is maintained in `fieldserve.xlsx`, while `sync.py` keeps it synchronized with the FieldServe API.
-
----
-
 ## Project Structure
 
 ```text
-Enview-Assignment-Prathamesh/
-├── .env
-├── api.py
-├── extraction.py
-├── fieldserve.xlsx
-├── README.md
-├── requirements.txt
-├── sheet.py
-├── storage.py
-├── submission.json
-├── sync_state.json
-├── sync.py
-└── workflow.py
+├── api.py              # FieldServe API client
+├── extraction.py       # Store/work-type extraction and data validation
+├── workflow.py         # Stage, Action Owner and workflow rules
+├── storage.py          # Excel and sync-state persistence
+├── sheet.py            # Grader CLI: export/apply
+├── sync.py             # Main two-way synchronization
+├── fieldserve.xlsx     # Operational spreadsheet
+├── sync_state.json     # Previous sync state
+├── submission.json     # Grader commands
+├── requirements.txt    # Dependencies
+└── README.md
 ````
 
-### File responsibilities
-
-| File               | Responsibility                                                                           |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| `api.py`           | FieldServe HTTP API client, authentication, pagination, PUT updates, rate-limit handling |
-| `extraction.py`    | Store-code extraction, work-type classification, noise detection, document validation    |
-| `workflow.py`      | Stage, Action Owner, workflow rules, manager/engineer validation, integrity checks       |
-| `storage.py`       | Excel workbook and synchronization-state persistence                                     |
-| `sheet.py`         | Required grader CLI for spreadsheet export and local edits                               |
-| `sync.py`          | Main two-way synchronization engine                                                      |
-| `fieldserve.xlsx`  | Real spreadsheet used by operations                                                      |
-| `sync_state.json`  | Previous synchronized state used for conflict detection                                  |
-| `submission.json`  | Grader command configuration                                                             |
-| `requirements.txt` | Python dependencies                                                                      |
-| `.env`             | Local API configuration                                                                  |
-
----
-
-# Setup
-
-## Requirements
-
-Python 3 is required.
-
-Install dependencies:
+## Setup
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Recommended dependencies:
+Set the required environment variables:
 
-* `requests`
-* `openpyxl`
-* `python-dotenv`
-
----
-
-## Environment Variables
-
-Create a `.env` file in the project root for local development:
-
-```env
+```bash
 FIELDOPS_BASE_URL=http://13.233.55.184:8377
-FIELDOPS_API_KEY=YOUR_PERSONAL_API_KEY
+FIELDOPS_API_KEY=<your-api-key>
 ```
 
-The API key is used as the HTTP Basic Authentication username.
+The API key is used as the Basic Auth username.
 
-The password is an arbitrary value as specified by the assignment.
+Do not commit `.env` or credentials.
 
-For example:
+## Synchronization
 
-```text
-username = FIELDOPS_API_KEY
-password = x
-```
-
-The grader supplies the required environment variables directly.
-
----
-
-# Running the Application
-
-## Full synchronization
-
-Run:
+Run one complete synchronization cycle with:
 
 ```bash
 python3 sync.py
 ```
 
-One execution performs one complete synchronization cycle and then exits.
+The sync:
 
-The synchronization cycle:
+1. Fetches agents and tickets from FieldServe.
+2. Reads the current Excel state.
+3. Compares both sides with the previous sync state.
+4. Pushes spreadsheet-only changes to the API.
+5. Applies server-only changes to Excel.
+6. Resolves simultaneous changes using the documented conflict policy.
+7. Recalculates Stage and Action Owner.
+8. Saves the spreadsheet and synchronization state.
 
-```text
-FieldServe API
-      |
-      v
-Fetch agents and tickets
-      |
-      v
-Compare server state with previous sync state
-      |
-      +----------------------+
-      |                      |
-      v                      v
-Server changes          Sheet changes
-      |                      |
-      v                      v
-Update Excel            Update API
-      |                      |
-      +----------+-----------+
-                 |
-                 v
-          Recalculate workflow
-                 |
-                 v
-          Save Excel + state
-```
+### Conflict Policy
 
----
+The FieldServe API is treated as the authoritative server state.
 
-# Spreadsheet
+* **Only Excel changed:** push the Excel change to the API.
+* **Only API changed:** update Excel from the API.
+* **Both changed the same field:** server wins.
 
-The real spreadsheet is:
+This prevents a stale spreadsheet value from overwriting a newer server-side change.
 
-```text
-fieldserve.xlsx
-```
+## Workflow
 
-The required columns are:
-
-```text
-Ticket ID
-Subject
-Status
-Engineer
-Manager
-Purchase Order
-Delivery Note
-Work Report
-Invoice
-Stage
-Action Owner
-```
-
-The spreadsheet is not a custom web UI. It is a real Excel workbook.
-
----
-
-# Sheet CLI
-
-The grader interacts with the spreadsheet through `sheet.py`.
-
-## Export
-
-```bash
-python3 sheet.py export /tmp/out.csv
-```
-
-This exports the current spreadsheet values to CSV.
-
-The first row contains the required column headers.
-
-Computed values such as:
-
-```text
-Stage
-Action Owner
-```
-
-are exported as their displayed values.
-
----
-
-## Apply edits
-
-```bash
-python3 sheet.py apply /tmp/edits.csv
-```
-
-The input CSV format is:
-
-```csv
-Ticket ID,Column,Value
-581102,Engineer,Ginarkin Sipu
-607702,Purchase Order,https://example.com/po/607702
-```
-
-Only these columns are editable:
-
-```text
-Status
-Engineer
-Manager
-Purchase Order
-Delivery Note
-Work Report
-Invoice
-```
-
-`sheet.py apply` only changes the local Excel workbook.
-
-It does **not** call the API and does **not** run synchronization.
-
-The next:
-
-```bash
-python3 sync.py
-```
-
-will synchronize those changes.
-
----
-
-# Workflow
-
-The workflow is evaluated in this exact order:
+Workflow is evaluated in this order:
 
 ```text
 1. Assign Manager
@@ -252,549 +95,100 @@ The workflow is evaluated in this exact order:
 6. Invoice
 ```
 
-The first unmet step becomes the ticket's:
+The **first unmet step** becomes `Stage`.
 
-```text
-Stage
-```
+The responsible person becomes `Action Owner`.
 
-The person responsible for that step becomes:
-
-```text
-Action Owner
-```
-
-If every step is complete:
+If all steps are complete:
 
 ```text
 Stage = Done
 Action Owner = blank
 ```
 
----
+### Document Rules
 
-## Assign Manager
+A document is considered complete only when it contains:
 
-A ticket has completed the manager-assignment step when:
+* a valid URL, or
+* an allowed `NA`
 
-```text
-manager
-```
+`NA` is allowed for:
 
-is non-empty.
+* Delivery Note
+* Invoice
 
-The coordinator owns this step.
+`NA` does not satisfy:
 
-Coordinator ownership is determined using the ticket ID parity rule from the assignment.
+* Purchase Order
+* Work Report
 
----
+Other non-empty text is treated as invalid document data.
 
-## Assign Engineer
+### Status Mapping
 
-A ticket has completed the engineer-assignment step when:
+| API | Spreadsheet |
+| --: | ----------- |
+|   2 | Open        |
+|   3 | Pending     |
+|   4 | Resolved    |
+|   5 | Closed      |
 
-```text
-engineer_id
-```
+## Spreadsheet CLI
 
-is set.
-
-The manager owns this step.
-
----
-
-## Purchase Order
-
-Purchase Order is complete only when:
-
-```text
-purchase_order = URL
-```
-
-`NA` does not waive Purchase Order.
-
-The manager owns this step.
-
----
-
-## Delivery Note
-
-Delivery Note is complete when either:
-
-```text
-delivery_note = URL
-```
-
-or:
-
-```text
-delivery_note = NA
-```
-
-Finance owns this step.
-
----
-
-## Work Report
-
-Work Report is complete only when:
-
-```text
-work_report = URL
-```
-
-It cannot be waived with `NA`.
-
-The assigned engineer owns this step.
-
----
-
-## Invoice
-
-Invoice is complete when either:
-
-```text
-invoice = URL
-```
-
-or:
-
-```text
-invoice = NA
-```
-
-Finance owns this step.
-
----
-
-# Document Validation
-
-Document fields accept only:
-
-```text
-URL
-empty
-NA
-```
-
-Any other text is considered junk and does not satisfy the workflow requirement.
-
-Examples:
-
-```text
-https://example.com/document.pdf
-```
-
-counts as a document.
-
-```text
-NA
-```
-
-is a valid waiver where the workflow allows it.
-
-```text
-waiting for approval
-```
-
-does not count.
-
----
-
-# Status Mapping
-
-The API uses numeric status values.
-
-They are represented in the spreadsheet as:
-
-| API value | Spreadsheet value |
-| --------: | ----------------- |
-|       `2` | Open              |
-|       `3` | Pending           |
-|       `4` | Resolved          |
-|       `5` | Closed            |
-
----
-
-# Integrity
-
-The synchronization logic also checks workflow integrity.
-
-Examples include:
-
-* Manager name does not exist in the manager roster.
-* Engineer ID does not exist in the engineer roster.
-* Engineer ID references a non-engineer.
-* Document field contains invalid/junk text.
-* A Closed ticket is missing a required workflow step.
-* A Resolved ticket is missing its Work Report.
-
-Integrity information is calculated internally by the workflow engine and can be used to identify problematic tickets.
-
----
-
-# Conflict Policy
-
-The synchronization uses an explicit:
-
-```text
-Server Wins
-```
-
-policy for conflicts on the same field.
-
-The previous synchronized state is stored in:
-
-```text
-sync_state.json
-```
-
-For every editable field, the synchronizer compares:
-
-```text
-Previous synchronized value
-Current Excel value
-Current API value
-```
-
-## Sheet-only change
-
-Example:
-
-```text
-Previous:
-Manager = "Nefo Zagi"
-
-Excel:
-Manager = "Felboso Hamar"
-
-API:
-Manager = "Nefo Zagi"
-```
-
-Only the spreadsheet changed.
-
-The change is pushed to the API.
-
----
-
-## Server-only change
-
-Example:
-
-```text
-Previous:
-Purchase Order = old URL
-
-Excel:
-Purchase Order = old URL
-
-API:
-Purchase Order = new URL
-```
-
-Only the server changed.
-
-The new server value is written into Excel.
-
----
-
-## Both sides changed
-
-Example:
-
-```text
-Previous:
-Manager = "Nefo Zagi"
-
-Excel:
-Manager = "Felboso Hamar"
-
-API:
-Manager = "Pahifan Kinga"
-```
-
-Both sides changed the same field since the previous synchronization.
-
-The server value wins.
-
-Therefore:
-
-```text
-Excel after sync:
-Manager = "Pahifan Kinga"
-```
-
-The local conflicting value is not silently pushed over the fresh server value.
-
----
-
-# New Tickets
-
-New tickets returned by the API are added to the spreadsheet.
-
-Their:
-
-* Ticket ID
-* Subject
-* Status
-* Engineer
-* Manager
-* Documents
-* Stage
-* Action Owner
-
-are calculated from the server ticket.
-
----
-
-# API Synchronization
-
-The API client uses:
-
-```text
-GET /api/v2/agents
-GET /api/v2/tickets
-GET /api/v2/tickets/{id}
-PUT /api/v2/tickets/{id}
-```
-
-The ticket list supports:
-
-```text
-page
-per_page
-updated_since
-```
-
-The implementation uses:
-
-```text
-per_page = 50
-```
-
-and handles the API's page/window limitation using `updated_since`.
-
-The API is documented as returning tickets ordered by:
-
-```text
-updated_at ascending
-```
-
-This allows synchronization to advance through large datasets using an updated-time cursor.
-
----
-
-# API Rate Limiting
-
-The API has a documented rate limit of:
-
-```text
-60 requests/minute
-```
-
-When the API responds with:
-
-```text
-429 Too Many Requests
-```
-
-the client checks:
-
-```text
-Retry-After
-```
-
-and waits before retrying.
-
-A bounded retry count is used so synchronization does not retry forever.
-
----
-
-# Messy Data
-
-The API data may contain inconsistent or noisy information.
-
-## Store Code
-
-The store code is extracted from the subject or requester email.
-
-The expected format is:
-
-```text
-6 alphanumeric characters
-```
-
-For example:
-
-```text
-M9GDCU
-```
-
----
-
-## Work Type
-
-Work type is classified as:
-
-```text
-PM / AMC             -> Maintenance
-Installation         -> Installation
-Fault / not working /
-complaint            -> Service Call
-Anything else        -> Other
-```
-
-The original API subject is preserved in the spreadsheet.
-
----
-
-# Noise Tickets
-
-The implementation uses conservative noise detection for obvious:
-
-* automated alerts
-* marketing/promotional messages
-* spam/test messages
-
-Noise exclusion is intentionally conservative so legitimate operational tickets are not accidentally removed.
-
----
-
-# Engineer and Manager Validation
-
-`engineer_id` is treated as a foreign key into the agent roster.
-
-The Engineer value displayed in Excel is the exact agent name from the roster.
-
-The Manager field is stored by the API as a plain name string.
-
-Manager names are validated against the manager roster before spreadsheet edits are pushed back to the API.
-
----
-
-# API Credentials
-
-Do not commit the personal API key to source control.
-
-The local `.env` file should not be committed.
-
-The repository should contain the code only; credentials should be supplied through environment variables.
-
----
-
-# Testing
-
-The system should be tested in both directions.
-
-## 1. Initial synchronization
-
-```bash
-python3 sync.py
-```
-
-Then:
+### Export
 
 ```bash
 python3 sheet.py export /tmp/out.csv
 ```
 
-Inspect:
+Exports the spreadsheet using the required 11-column contract.
 
-```text
-/tmp/out.csv
-```
-
----
-
-## 2. Spreadsheet-to-API test
-
-Create an edits file:
-
-```csv
-Ticket ID,Column,Value
-581102,Engineer,Ginarkin Sipu
-```
-
-Apply it:
+### Apply
 
 ```bash
 python3 sheet.py apply /tmp/edits.csv
 ```
 
-Then synchronize:
+Input format:
+
+```csv
+Ticket ID,Column,Value
+122508,Manager,Pahifan Kinga
+```
+
+`apply` modifies only the local Excel workbook. It does **not** call the API or run synchronization.
+
+The next:
 
 ```bash
 python3 sync.py
 ```
 
-The API should receive the edit.
+will synchronize the change.
 
----
+## API Pagination
 
-## 3. API-to-spreadsheet test
+The API limits ticket pagination to 10 pages with a maximum of 50 tickets per page.
 
-Change a ticket on the API side, then run:
+The implementation therefore uses `updated_since` to continue through larger datasets and deduplicates tickets by Ticket ID.
 
-```bash
-python3 sync.py
-```
+API rate-limit responses (`429`) are handled using `Retry-After` with bounded retries.
 
-Export:
+## Messy Data
 
-```bash
-python3 sheet.py export /tmp/out.csv
-```
+The implementation handles:
 
-The spreadsheet should contain the server-side change.
+* Store-code extraction from subject/requester email.
+* Work-type classification.
+* Invalid document values.
+* Manager validation against the roster.
+* Engineer ID resolution through the agent roster.
+* Conservative noise-ticket filtering.
 
----
+## Submission
 
-## 4. Conflict test
-
-Change one field on the spreadsheet and change the same field on the server before running synchronization.
-
-Then:
-
-```bash
-python3 sync.py
-```
-
-The documented policy is:
-
-```text
-Server wins
-```
-
-The spreadsheet should contain the server value after synchronization.
-
----
-
-## 5. Workflow tests
-
-Test tickets covering:
-
-```text
-Missing Manager
-Missing Engineer
-Missing Purchase Order
-Missing Delivery Note
-Missing Work Report
-Missing Invoice
-NA Delivery Note
-NA Invoice
-Closed with missing paperwork
-Resolved without Work Report
-All steps complete
-```
-
-The Stage and Action Owner should follow the workflow order.
-
----
-
-# Submission Commands
-
-The submission configuration is:
+`submission.json`:
 
 ```json
 {
@@ -803,41 +197,44 @@ The submission configuration is:
 }
 ```
 
-Both commands are intended to be executed from the repository root.
+Both commands are executed from the repository root.
 
----
+## Testing
 
-# Assumptions
+The implementation was tested for:
 
-1. The FieldServe API is the source of truth for ticket identity and server-side ticket data.
-2. Excel is the operational working copy used by humans.
-3. `sync_state.json` represents the last successfully synchronized state.
-4. When both sides change the same field, the server value wins.
-5. The Engineer spreadsheet value is resolved from `engineer_id`.
-6. Manager names are validated against the agent roster.
-7. Document fields only count when they contain a valid URL or an allowed `NA` waiver.
-8. Noise detection is conservative.
-9. Computed workflow fields are derived from the current ticket state rather than manually edited.
-10. A successful synchronization updates the spreadsheet and synchronization state together.
+* Full synchronization
+* API → Excel changes
+* Excel → API changes
+* Same-field conflicts
+* API pagination beyond 500 tickets
+* Workflow Stage and Action Owner
+* `NA` handling
+* Invalid document values
+* CSV export
+* CSV apply without an API side effect
 
----
+## Assumptions
 
-# Future Work
-
-Possible improvements outside the assignment timebox include:
-
-* More sophisticated noise classification.
-* More detailed audit logging.
-* A visible conflict/audit sheet.
-* Better incremental synchronization state management.
-* Automated scheduled synchronization.
-* Additional spreadsheet validation/drop-downs.
-* More comprehensive automated tests.
-* Operational metrics and dashboards.
+* The FieldServe API is authoritative for server-side ticket data.
+* Excel is the operational working view.
+* `sync_state.json` stores the previous synchronized state.
+* Computed fields (`Stage`, `Action Owner`) are derived and are not manually editable.
+* When both sides change the same field, the server value wins.
 
 ```
 
-This completes the **README**.
+### Why I prefer this version
 
-At this point, the main code/configuration files are all present. The next step should **not** be another code file—we should first run the project and see what actually happens, because `sync.py` is where the modules interact and integration issues can surface.
+Your original README is good technically, but it has **too much implementation detail for an interviewer**—for example the long examples for every conflict scenario, extensive future-work section, repeated explanations, and detailed testing instructions.
+
+The shorter version lets an interviewer quickly understand:
+
+**Architecture → Sync → Conflict policy → Workflow → CLI → Assumptions**
+
+without having to read several hundred lines.
+
+One small wording change I especially recommend: use **"FieldServe API is treated as the authoritative server state"** rather than simply saying **"Server wins"** everywhere. It explains *why* the conflict policy exists without sounding arbitrary.
+
+Your actual implementation and the tests we've run are the evidence behind this README; don't claim tests you haven't actually performed.
 ```

@@ -1,19 +1,10 @@
-Yes. Your current README is **much more detailed than necessary** for a 3-hour take-home assignment. An interviewer mainly needs to understand:
-
-1. What the project does
-2. How to run it
-3. How sync works
-4. Conflict policy
-5. Workflow rules
-6. Grader commands
-7. Key assumptions
-
-I would replace your current README with this **minimal, interview-friendly version**:
-
-````markdown
 # FieldServe Ticket Board
 
 Two-way synchronization between the FieldServe helpdesk API and a real Excel spreadsheet.
+
+**GitHub Repository:**  
+**Repository:** [github.com/Prathmeshpawar21/enview-ticket-system](https://github.com/Prathmeshpawar21/enview-ticket-system)
+
 
 The spreadsheet answers:
 
@@ -31,12 +22,14 @@ The spreadsheet answers:
 ├── sync.py             # Main two-way synchronization
 ├── fieldserve.xlsx     # Operational spreadsheet
 ├── sync_state.json     # Previous sync state
-├── submission.json     # Grader commands
-├── requirements.txt    # Dependencies
+├── submission.json     # Grader command configuration
+├── requirements.txt    # Python dependencies
 └── README.md
-````
+```
 
 ## Setup
+
+Python 3 is required.
 
 ```bash
 pip install -r requirements.txt
@@ -44,7 +37,7 @@ pip install -r requirements.txt
 
 Set the required environment variables:
 
-```bash
+```env
 FIELDOPS_BASE_URL=http://13.233.55.184:8377
 FIELDOPS_API_KEY=<your-api-key>
 ```
@@ -55,7 +48,7 @@ Do not commit `.env` or credentials.
 
 ## Synchronization
 
-Run one complete synchronization cycle with:
+Run one complete synchronization cycle:
 
 ```bash
 python3 sync.py
@@ -76,15 +69,39 @@ The sync:
 
 The FieldServe API is treated as the authoritative server state.
 
-* **Only Excel changed:** push the Excel change to the API.
-* **Only API changed:** update Excel from the API.
-* **Both changed the same field:** server wins.
+- **Only Excel changed:** push the Excel change to the API.
+- **Only API changed:** update Excel from the API.
+- **Both changed the same field:** server wins.
 
 This prevents a stale spreadsheet value from overwriting a newer server-side change.
 
+## Spreadsheet
+
+The real spreadsheet is:
+
+```text
+fieldserve.xlsx
+```
+
+Required columns:
+
+```text
+Ticket ID
+Subject
+Status
+Engineer
+Manager
+Purchase Order
+Delivery Note
+Work Report
+Invoice
+Stage
+Action Owner
+```
+
 ## Workflow
 
-Workflow is evaluated in this order:
+Workflow is evaluated in this exact order:
 
 ```text
 1. Assign Manager
@@ -99,42 +116,117 @@ The **first unmet step** becomes `Stage`.
 
 The responsible person becomes `Action Owner`.
 
-If all steps are complete:
+If every step is complete:
 
 ```text
 Stage = Done
 Action Owner = blank
 ```
 
-### Document Rules
+### Assign Manager
 
-A document is considered complete only when it contains:
+The Manager step is complete when `manager` is non-empty.
 
-* a valid URL, or
-* an allowed `NA`
+The coordinator owns this step. Coordinator ownership follows the ticket-ID parity rule from the assignment.
 
-`NA` is allowed for:
+### Assign Engineer
 
-* Delivery Note
-* Invoice
+The Engineer step is complete when `engineer_id` is set.
 
-`NA` does not satisfy:
+The manager owns this step.
 
-* Purchase Order
-* Work Report
+### Purchase Order
 
-Other non-empty text is treated as invalid document data.
+Purchase Order is complete only when it contains a valid URL.
 
-### Status Mapping
+`NA` does not waive Purchase Order.
 
-| API | Spreadsheet |
-| --: | ----------- |
-|   2 | Open        |
-|   3 | Pending     |
-|   4 | Resolved    |
-|   5 | Closed      |
+The manager owns this step.
 
-## Spreadsheet CLI
+### Delivery Note
+
+Delivery Note is complete when it contains either:
+
+- a valid URL, or
+- exact `NA`
+
+Finance owns this step.
+
+### Work Report
+
+Work Report is complete only when it contains a valid URL.
+
+It cannot be waived with `NA`.
+
+The assigned engineer owns this step.
+
+### Invoice
+
+Invoice is complete when it contains either:
+
+- a valid URL, or
+- exact `NA`
+
+Finance owns this step.
+
+## Document Validation
+
+Document fields accept:
+
+- a valid URL
+- empty
+- exact `NA` where the workflow allows it
+
+Other non-empty text is treated as invalid/junk and does not satisfy the workflow requirement.
+
+## Status Mapping
+
+| API value | Spreadsheet value |
+|---:|---|
+| `2` | Open |
+| `3` | Pending |
+| `4` | Resolved |
+| `5` | Closed |
+
+## Integrity
+
+The workflow logic checks for problematic data such as:
+
+- Invalid manager names
+- Invalid engineer IDs
+- Engineer IDs referencing non-engineer agents
+- Invalid document values
+- Closed tickets missing required workflow steps
+- Resolved tickets missing a Work Report
+
+## API Pagination
+
+The API limits ticket pagination to 10 pages with a maximum of 50 tickets per page.
+
+The implementation uses `updated_since` to continue through larger datasets and deduplicates tickets by Ticket ID.
+
+Tickets are processed according to the API's documented `updated_at` ordering.
+
+## API Rate Limiting
+
+The API has a documented rate limit of 60 requests/minute.
+
+For `429 Too Many Requests`, the client uses `Retry-After` with bounded retries.
+
+## Messy Data
+
+The implementation handles:
+
+- Store-code extraction from subject/requester email
+- Work-type classification
+- Invalid document values
+- Manager validation against the roster
+- Engineer ID resolution through the agent roster
+- Conservative noise-ticket filtering
+
+## Sheet CLI
+
+The grader interacts with the spreadsheet through `sheet.py`.
 
 ### Export
 
@@ -142,7 +234,9 @@ Other non-empty text is treated as invalid document data.
 python3 sheet.py export /tmp/out.csv
 ```
 
-Exports the spreadsheet using the required 11-column contract.
+Exports the current spreadsheet values using the required 11-column contract.
+
+Computed values such as `Stage` and `Action Owner` are exported as displayed values.
 
 ### Apply
 
@@ -157,7 +251,21 @@ Ticket ID,Column,Value
 122508,Manager,Pahifan Kinga
 ```
 
-`apply` modifies only the local Excel workbook. It does **not** call the API or run synchronization.
+Editable columns are:
+
+```text
+Status
+Engineer
+Manager
+Purchase Order
+Delivery Note
+Work Report
+Invoice
+```
+
+`sheet.py apply` changes only the local Excel workbook.
+
+It does **not** call the API or run synchronization.
 
 The next:
 
@@ -167,28 +275,39 @@ python3 sync.py
 
 will synchronize the change.
 
-## API Pagination
+## New Tickets
 
-The API limits ticket pagination to 10 pages with a maximum of 50 tickets per page.
+New tickets returned by the API are added to the spreadsheet.
 
-The implementation therefore uses `updated_since` to continue through larger datasets and deduplicates tickets by Ticket ID.
+Their ticket fields, Stage, and Action Owner are calculated from the server ticket.
 
-API rate-limit responses (`429`) are handled using `Retry-After` with bounded retries.
+## Engineer and Manager Handling
 
-## Messy Data
+`engineer_id` is treated as a foreign key into the agent roster.
 
-The implementation handles:
+The Engineer value displayed in Excel is resolved from the agent name.
 
-* Store-code extraction from subject/requester email.
-* Work-type classification.
-* Invalid document values.
-* Manager validation against the roster.
-* Engineer ID resolution through the agent roster.
-* Conservative noise-ticket filtering.
+The Manager field is stored by the API as a name string and is validated against the manager roster before spreadsheet edits are pushed to the API.
+
+## Testing
+
+The implementation was tested for:
+
+- Full synchronization
+- No-change synchronization
+- Excel → API changes
+- API → Excel changes
+- Same-field conflicts
+- API pagination beyond 500 tickets
+- Workflow Stage and Action Owner
+- `NA` handling
+- Invalid document values
+- CSV export
+- CSV apply without an API side effect
 
 ## Submission
 
-`submission.json`:
+`submission.json` contains:
 
 ```json
 {
@@ -197,44 +316,15 @@ The implementation handles:
 }
 ```
 
-Both commands are executed from the repository root.
-
-## Testing
-
-The implementation was tested for:
-
-* Full synchronization
-* API → Excel changes
-* Excel → API changes
-* Same-field conflicts
-* API pagination beyond 500 tickets
-* Workflow Stage and Action Owner
-* `NA` handling
-* Invalid document values
-* CSV export
-* CSV apply without an API side effect
+Both commands are intended to run from the repository root.
 
 ## Assumptions
 
-* The FieldServe API is authoritative for server-side ticket data.
-* Excel is the operational working view.
-* `sync_state.json` stores the previous synchronized state.
-* Computed fields (`Stage`, `Action Owner`) are derived and are not manually editable.
-* When both sides change the same field, the server value wins.
-
-```
-
-### Why I prefer this version
-
-Your original README is good technically, but it has **too much implementation detail for an interviewer**—for example the long examples for every conflict scenario, extensive future-work section, repeated explanations, and detailed testing instructions.
-
-The shorter version lets an interviewer quickly understand:
-
-**Architecture → Sync → Conflict policy → Workflow → CLI → Assumptions**
-
-without having to read several hundred lines.
-
-One small wording change I especially recommend: use **"FieldServe API is treated as the authoritative server state"** rather than simply saying **"Server wins"** everywhere. It explains *why* the conflict policy exists without sounding arbitrary.
-
-Your actual implementation and the tests we've run are the evidence behind this README; don't claim tests you haven't actually performed.
-```
+1. The FieldServe API is the authoritative server state.
+2. Excel is the operational working view.
+3. `sync_state.json` stores the previous synchronized state.
+4. When both sides change the same field, the server value wins.
+5. Computed workflow fields are derived from the current ticket state.
+6. Computed fields are not manually editable through the grader's apply interface.
+7. Document fields only count when they contain a valid URL or an allowed `NA` waiver.
+8. Noise detection is conservative.

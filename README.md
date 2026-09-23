@@ -39,12 +39,11 @@ Set the required environment variables:
 
 ```env
 FIELDOPS_BASE_URL=http://13.233.55.184:8377
-FIELDOPS_API_KEY=<your-api-key>
+FIELDOPS_API_KEY=<our-api-key>
 ```
 
 The API key is used as the Basic Auth username.
-
-Do not commit `.env` or credentials.
+ 
 
 ## Synchronization
 
